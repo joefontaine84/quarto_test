@@ -7,8 +7,8 @@ format:
   html: 
     toc: true
     toc-expand: true
-
 ---
+
 ## Summary
 
 This project is a trial to see how Quarto can be used to more effectively describe and summarize a dataset with co-workers who are knowledgeable of the R programming language and statistics.
@@ -109,7 +109,6 @@ missing_values
 
 Note that all records that have a missing analytical result are also marked as non-detect in the result_result_detection_condition field.
 
-
 For missing values, do they all have an associated lab detection limit?
 
 ```{r}
@@ -139,7 +138,7 @@ unique(df3$detection_limit_measure_unit_a)
 
 ```
 
-We've learned that all missing values have a detection limit listed under the detection_limit_measure_a column. The detection limits, when listed, are in units of ng/L. Now let's replace the ND values with the detection limit divided by the square root of two. 
+We've learned that all missing values have a detection limit listed under the detection_limit_measure_a column. The detection limits, when listed, are in units of ng/L. Now let's replace the ND values with the detection limit divided by the square root of two.
 
 ```{r}
 
@@ -157,7 +156,7 @@ df4
 
 ```
 
-Let's do an analysis of PFOA/PFOS concentrations by Massachusetts counties. First let's get some summary stats on how many sample locations there are per county and how many samples were taken from each point. 
+Let's do an analysis of PFOA/PFOS concentrations by Massachusetts counties. First let's get some summary stats on how many sample locations there are per county and how many samples were taken from each point.
 
 ```{r}
 
@@ -270,5 +269,3 @@ density_plot_pfos
 
 
 ```
-
-
