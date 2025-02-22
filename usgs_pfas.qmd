@@ -1,0 +1,274 @@
+---
+title: "Investigation of USGS PFAS Data in Massachusetts"
+subtitle: ""
+warning: false
+df-print: paged
+format:
+  html: 
+    toc: true
+    toc-expand: true
+
+---
+## Summary
+
+This project is a trial to see how Quarto can be used to more effectively describe and summarize a dataset with co-workers who are knowledgeable of the R programming language and statistics.
+
+## Data Exploration
+
+### Raw Data
+
+The raw data is loaded.
+
+```{r}
+
+library(dplyr)
+library(readr)
+library(janitor)
+library(tidyselect)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+
+df <- readr::read_csv("data/fullphyschem.csv") |>
+  janitor::clean_names()
+
+colnames(df)
+
+```
+
+Lets select relevant columns:
+
+```{r}
+
+df2 <- df |>
+  select(location_state, 
+         location_county_name, 
+         location_name, 
+         contains("location_latitude"), 
+         contains("location_longitude"), 
+         contains("datum"), 
+         activity_start_date, 
+         activity_type_code, 
+         activity_media, 
+         activity_media_subdivision, 
+         result_result_detection_condition, 
+         result_characteristic, 
+         result_characteristic_user_supplied, 
+         result_cas_number, 
+         result_sample_fraction, 
+         result_measure, 
+         result_measure_unit, 
+         result_measure_status_identifier, 
+         result_measure_type, 
+         data_quality_result_comment, 
+         contains("detection_limit"), 
+         result_analytical_method_name, 
+         lab_info_name, 
+         lab_info_analysis_start_date, 
+         lab_info_laboratory_comment)
+
+
+
+
+```
+
+Filtering by whether the analyte is "PFOA" or "PFOS". Also, standardize the PFOA and PFOS names:
+
+```{r}
+
+df3 <- df2 |> 
+  filter(str_detect(result_characteristic_user_supplied, 
+                    "\\(PFOA\\)|\\(PFOS\\)")) |>
+  mutate(result_characteristic = case_when(
+    
+    result_characteristic == "PFOA ion" ~ "PFOA",
+    result_characteristic == "Perfluorooctanesulfonate" ~ "PFOS",
+    TRUE ~ "error"
+    
+  ))
+
+
+# no errors found!
+
+
+```
+
+### Start analyzing results:
+
+Values that do not have a result?:
+
+```{r}
+
+missing_values <- df3 |>
+  filter(is.na(result_measure))
+
+missing_values
+
+
+```
+
+Note that all records that have a missing analytical result are also marked as non-detect in the result_result_detection_condition field.
+
+
+For missing values, do they all have an associated lab detection limit?
+
+```{r}
+
+detection_limit <- missing_values |>
+  filter(!is.na(detection_limit_measure_a))
+
+if (nrow(detection_limit) == nrow(missing_values)){
+  
+  print("success!")
+  
+} else {
+  
+  stop("check this part of the data again")
+  
+}
+
+
+```
+
+What are the units of the detection limits?
+
+```{r}
+
+unique(df3$detection_limit_measure_unit_a)
+
+
+```
+
+We've learned that all missing values have a detection limit listed under the detection_limit_measure_a column. The detection limits, when listed, are in units of ng/L. Now let's replace the ND values with the detection limit divided by the square root of two. 
+
+```{r}
+
+df4 <- df3 |> 
+  mutate(result_measure = case_when(
+    
+    is.na(result_measure) ~ as.double(detection_limit_measure_a / sqrt(2)),
+    
+    TRUE ~ result_measure
+    
+  ))
+
+df4
+
+
+```
+
+Let's do an analysis of PFOA/PFOS concentrations by Massachusetts counties. First let's get some summary stats on how many sample locations there are per county and how many samples were taken from each point. 
+
+```{r}
+
+county_stats <- df4 |>
+  select(location_county_name, 
+         result_characteristic,
+         result_measure, non_detect = result_result_detection_condition
+         ) |>
+  group_by(location_county_name, 
+         result_characteristic) |>
+  summarize(
+    
+    n = n(),
+    nd = sum(!is.na(non_detect)),
+    detected = sum(is.na(non_detect)),
+    min = min(result_measure, na.rm = TRUE),
+    mean = mean(result_measure, na.rm = TRUE),
+    p25 = quantile(result_measure, probs = 0.25, na.rm = TRUE),
+    p50 = quantile(result_measure, probs = 0.50, na.rm = TRUE),
+    p75 = quantile(result_measure, probs = 0.75, na.rm = TRUE),
+    p90 = quantile(result_measure, probs = 0.90, na.rm = TRUE),
+    max = max(result_measure, na.rm = TRUE)
+    
+    
+    
+  ) |>
+  ungroup()
+
+
+knitr::kable(county_stats)
+
+```
+
+## Plots
+
+### Average Mean PFOA/PFOS Concentrations by County
+
+```{r}
+
+bar_plot_by_analyte <- function(df, analyte) {
+  
+  df2 <- df |>
+    filter(result_characteristic == {{ analyte }})
+  
+  plot <- ggplot(df2, aes(location_county_name, mean)) +
+    geom_bar(stat = "identity", position = "dodge", 
+             aes(fill = location_county_name), show.legend = FALSE) +
+    theme_bw() + 
+    labs(
+      title = paste(analyte, " Mean Concentration (ppt) by County"),
+      y = "Concentration (ppt)",
+      x = "County Name"
+      
+    ) + 
+    theme(axis.title.x = element_blank()) + 
+    theme(axis.title.y = element_text(margin = margin(r = 10))) + 
+    theme(plot.title = element_text(hjust = 0.5)) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+  
+  return(plot)
+  
+}
+
+county_plot_pfoa <- bar_plot_by_analyte(county_stats, "PFOA")
+county_plot_pfoa
+
+county_plot_pfos <- bar_plot_by_analyte(county_stats, "PFOS")
+county_plot_pfos
+
+
+
+```
+
+### Desnity Plots of Sample Results for PFOA/PFOS
+
+```{r}
+
+density_plot_by_analyte <- function(df, analyte) {
+  
+  df2 <- df |>
+    filter(result_characteristic == {{ analyte }})
+  
+  plot <- ggplot(df2, aes(result_measure)) +
+    geom_density(fill = "green", alpha = 0.6) 
+    # theme_bw() + 
+    # labs(
+    #   title = paste(analyte, " Mean Concentration (ppt) by County"),
+    #   y = "Concentration (ppt)",
+    #   x = "County Name"
+    #   
+    # ) + 
+    # theme(axis.title.x = element_blank()) + 
+    # theme(axis.title.y = element_text(margin = margin(r = 10))) + 
+    # theme(plot.title = element_text(hjust = 0.5)) + 
+    # theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+  
+  return(plot)
+  
+}
+
+density_plot_pfoa <- density_plot_by_analyte(df4, "PFOA")
+density_plot_pfoa
+
+density_plot_pfos <- density_plot_by_analyte(df4, "PFOS")
+density_plot_pfos
+
+
+
+
+
+
+```
+
+

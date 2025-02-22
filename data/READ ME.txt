@@ -1,0 +1,5 @@
+the data file provided herein was downloaded from: 
+
+https://waterdata.usgs.gov/download-samples/#sampleMedia=Water&characteristicGroup=Organics,%20PFAS&statecode=US:25&dataProfile=fullphyschem
+
+on 02/17/2025
